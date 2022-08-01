@@ -21,18 +21,25 @@ pub struct StakedNodesUpdaterService {
     thread_hdl: JoinHandle<()>,
 }
 
+#[derive(Default, Deserialize, Clone)]
+pub struct StakedNodesOverrides {
+    pub staked_map: HashMap<IpAddr, u64>,
+}
+
 impl StakedNodesUpdaterService {
     pub fn new(
         exit: Arc<AtomicBool>,
         cluster_info: Arc<ClusterInfo>,
         bank_forks: Arc<RwLock<BankForks>>,
         shared_staked_nodes: Arc<RwLock<StakedNodes>>,
+        shared_staked_nodes_overrides: Arc<RwLock<StakedNodesOverrides>>,
     ) -> Self {
         let thread_hdl = Builder::new()
             .name("sol-sn-updater".to_string())
             .spawn(move || {
                 let mut last_stakes = Instant::now();
                 while !exit.load(Ordering::Relaxed) {
+                    let overrides = shared_staked_nodes_overrides.read().unwrap();
                     let mut new_ip_to_stake = HashMap::new();
                     let mut new_id_to_stake = HashMap::new();
                     let mut total_stake = 0;
@@ -43,6 +50,7 @@ impl StakedNodesUpdaterService {
                         &mut total_stake,
                         &bank_forks,
                         &cluster_info,
+                        &overrides.staked_map,
                     ) {
                         let mut shared = shared_staked_nodes.write().unwrap();
                         shared.total_stake = total_stake;
@@ -63,6 +71,7 @@ impl StakedNodesUpdaterService {
         total_stake: &mut u64,
         bank_forks: &RwLock<BankForks>,
         cluster_info: &ClusterInfo,
+        overrides: &HashMap<IpAddr, u64>,
     ) -> bool {
         if last_stakes.elapsed() > IP_TO_STAKE_REFRESH_DURATION {
             let root_bank = bank_forks.read().unwrap().root_bank();
@@ -87,6 +96,13 @@ impl StakedNodesUpdaterService {
                     Some((node.tvu.ip(), *stake))
                 })
                 .collect();
+            for (ip, stake_override) in overrides.iter() {
+                if let Some(previous_stake) = ip_to_stake.get(ip) {
+                    *total_stake -= previous_stake;
+                }
+                *total_stake += stake_override;
+                ip_to_stake.insert(*ip, *stake_override);
+            }
             *last_stakes = Instant::now();
             true
         } else {
