@@ -25,6 +25,7 @@ use {
     solana_core::{
         ledger_cleanup_service::{DEFAULT_MAX_LEDGER_SHREDS, DEFAULT_MIN_MAX_LEDGER_SHREDS},
         system_monitor_service::SystemMonitorService,
+        staked_nodes_updater_service::StakedNodesOverrides,
         tower_storage,
         tpu::DEFAULT_TPU_COALESCE_MS,
         validator::{is_snapshot_config_valid, Validator, ValidatorConfig, ValidatorStartProgress},
@@ -75,6 +76,7 @@ use {
     solana_validator::{
         admin_rpc_service, bootstrap, dashboard::Dashboard, ledger_lockfile, lock_ledger,
         new_spinner_progress_bar, println_name_value, redirect_stderr_to_file,
+        admin_rpc_service::load_staked_nodes_overrides,
     },
     std::{
         collections::{HashSet, VecDeque},
@@ -1235,6 +1237,13 @@ pub fn main() {
                 .help("Controls the TPU connection pool size per remote addresss"),
         )
         .arg(
+            Arg::with_name("staked_nodes_overrides")
+                .long("staked-nodes-overrides")
+                .value_name("FILE_OR_URL")
+                .takes_value(true)
+                .help("Provide file with custom overrides for stakes of specific IPs."),  // TODO: change IP to IP or identity
+        )
+        .arg(
             Arg::with_name("rocksdb_max_compaction_jitter")
                 .long("rocksdb-max-compaction-jitter-slots")
                 .value_name("ROCKSDB_MAX_COMPACTION_JITTER_SLOTS")
@@ -1915,6 +1924,19 @@ pub fn main() {
             .after_help("Note: the new filter only applies to the currently running validator instance")
         )
         .subcommand(
+            SubCommand::with_name("staked-nodes-overrides")
+            .about("Overrides stakes of specific IPs.")  // TODO: could be IP or identity, change desc
+            .arg(
+                Arg::with_name("path")
+                    .value_name("PATH_OR_URL")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Provide path to resource with custom overrides for stakes of specific IPs."),
+            )
+            .after_help("Note: the new staked nodes overrides only applies to the \
+                         currently running validator instance")
+        )
+        .subcommand(
             SubCommand::with_name("wait-for-restart-window")
             .about("Monitor the validator for a good time to restart")
             .arg(
@@ -2098,6 +2120,28 @@ pub fn main() {
             monitor_validator(&ledger_path);
             return;
         }
+        ("staked-nodes-overrides", Some(subcommand_matches)) => {
+            if !subcommand_matches.is_present("path") {
+                println!("staked-nodes-overrides requires argument of location of the configuration");
+                exit(1);
+            }
+
+            let path_or_url = subcommand_matches.value_of("path").unwrap();
+
+            let admin_client = admin_rpc_service::connect(&ledger_path);
+            admin_rpc_service::runtime()
+                .block_on(async move {
+                    admin_client
+                        .await?
+                        .set_staked_nodes_overrides(path_or_url.to_string())
+                        .await
+                })
+                .unwrap_or_else(|err| {
+                    println!("setStakedNodesOverrides request failed: {}", err);
+                    exit(1);
+                });
+            return;
+        }
         ("set-identity", Some(subcommand_matches)) => {
             let require_tower = subcommand_matches.is_present("require_tower");
 
@@ -2227,6 +2271,22 @@ pub fn main() {
             )]
         });
     let authorized_voter_keypairs = Arc::new(RwLock::new(authorized_voter_keypairs));
+
+    let staked_nodes_overrides_path = matches
+        .value_of("staked_nodes_overrides")
+        .map(str::to_string);
+    let staked_nodes_overrides = Arc::new(RwLock::new(
+        match staked_nodes_overrides_path {
+            None => StakedNodesOverrides::default(),
+            Some(p) => load_staked_nodes_overrides(&p)
+                .unwrap_or_else(|err| {
+                   println!("Failed to load stake-nodes-overrides from {}: {}", &p, err);
+                   clap::Error::with_description(
+                       "Failed to load configuration of stake-nodes-overrides argument",
+                       clap::ErrorKind::InvalidValue,
+                   ).exit()}),
+        })
+    );
 
     let init_complete_file = matches.value_of("init_complete_file");
 
@@ -2935,6 +2995,7 @@ pub fn main() {
             authorized_voter_keypairs: authorized_voter_keypairs.clone(),
             post_init: admin_service_post_init.clone(),
             tower_storage: validator_config.tower_storage.clone(),
+            staked_nodes_overrides: staked_nodes_overrides.clone(),
         },
     );
 
