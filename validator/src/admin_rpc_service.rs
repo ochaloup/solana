@@ -471,10 +471,42 @@ pub fn load_staked_nodes_overrides(
 }
 
 fn try_config_from_url(url: Url) -> std::result::Result<StakedNodesOverrides, Box<dyn error::Error>> {
-    let res = reqwest::blocking::get(url)?;
-    let body = res.text()?;
+    // let res = tokio::task::spawn_blocking(move || {
+    //     let res = reqwest::blocking::get(url.clone());
+    //     if res.is_err() {
+    //         info!("Cannot get data from {}: {}", url.clone(), res.unwrap_err());
+    //         return;
+    //     }
+    //     let body = res.unwrap().text();
+    //     if body.is_err() {
+    //         info!("Cannot get body from {}: {}", url.clone(), body.unwrap_err());
+    //         return;
+    //     }
+    //     // println!("body: {}", body.unwrap());
+    //     info!("body: {}", &body.unwrap());
+    // });
 
-    Ok(serde_yaml::from_str(&body)?)
+    let handle = tokio::runtime::Handle::current();
+    let _ = handle.enter();
+    let o = futures::executor::block_on(
+        // reqwest::get("https://www.rust-lang.org")
+        //     .await?
+        //     .text()
+        //     .await?
+
+        tokio::task::spawn_blocking(move || {
+            let res = reqwest::blocking::get(url.clone());
+            match res {
+                Err(e) => {
+                    error!("Cannot get data from {}: {}", url.clone(), e);
+                    "".to_string()
+                }
+                Ok(v) => v.text().unwrap_or("".to_string())
+            }
+        })
+    )?;
+
+    Ok(serde_yaml::from_str(&o)?)
 }
 
 fn try_config_from_local_file(path: &String) -> std::result::Result<StakedNodesOverrides, Box<dyn error::Error>> {

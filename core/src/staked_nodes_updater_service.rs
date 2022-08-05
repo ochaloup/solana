@@ -96,7 +96,9 @@ impl StakedNodesUpdaterService {
                     Some((node.tvu.ip(), *stake))
                 })
                 .collect();
+            info!(">>>> Updating {:?}", overrides);
             for (ip, stake_override) in overrides.iter() {
+                info!(">>>> Overriding stake for IP {} with data {}", ip, stake_override);
                 if let Some(previous_stake) = ip_to_stake.get(ip) {
                     *total_stake -= previous_stake;
                 }

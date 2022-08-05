@@ -6472,6 +6472,7 @@ dependencies = [
  "core_affinity",
  "crossbeam-channel",
  "fd-lock",
+ "futures 0.3.21",
  "indicatif",
  "jsonrpc-core",
  "jsonrpc-core-client",
