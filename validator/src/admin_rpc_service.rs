@@ -310,11 +310,9 @@ impl AdminRpc for AdminRpcImpl {
             jsonrpc_core::error::Error::internal_error()
         })?;
         let mut write_staked_nodes = meta.staked_nodes_overrides.write().unwrap();
-        write_staked_nodes.staked_map = loaded_config.staked_map;
-        info!(
-            "Staked nodes overrides was replaced with data from {}",
-            path_or_url
-        );
+        write_staked_nodes.staked_map_id = loaded_config.staked_map_id;
+        info!("Staked nodes overrides loaded from {}", path_or_url);
+        debug!("overrides map: {:?}", write_staked_nodes.staked_map_id);
         Ok(())
     }
 

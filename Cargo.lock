@@ -3222,9 +3222,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c53a5ade47760e8cc4986bdc5e72daeffaaaee64cbc374f9cfe0a00c1cd87b1f"
 dependencies = [
  "serde",
- "serde_cbor",
- "serde_json",
- "serde_yaml",
+ "serde_yaml 0.8.26",
 ]
 
 [[package]]
@@ -5069,6 +5067,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "serde_yaml 0.9.2",
  "serial_test",
  "solana-address-lookup-table-program",
  "solana-bloom",
